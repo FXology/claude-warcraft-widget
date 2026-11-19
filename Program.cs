@@ -216,6 +216,7 @@ sealed class Settings
     public bool WarnHigh { get; set; } = true;
     public bool Voices { get; set; } = true; // orc peon lines for chat and widget events
     public bool Warcraft { get; set; } = true; // the Warcraft III look; off is the plain dark card
+    public double Zoom { get; set; } = 1; // the card's size, set by dragging its corner grip
     public string? LastFolder { get; set; } // where the last "+" chat started
 
     public static Settings Load()
@@ -781,7 +782,15 @@ sealed class WidgetForm : Form
     bool firstShow = true;
     bool? sessionWasReset, weekWasReset; // null until known, so a window that reset long ago doesn't pop on launch
 
-    float S => DeviceDpi / 96f;
+    float S => DeviceDpi / 96f * (float)Math.Clamp(settings.Zoom, MinZoom, MaxZoom); // monitor DPI times the user's size
+    const double MinZoom = 0.7, MaxZoom = 2.5;
+    // The resize grip in the bottom-right corner, on the frame; dragging it scales the whole card, text included.
+    RectangleF GripBox => new(ClientSize.Width - 18 * S, ClientSize.Height - 18 * S, 18 * S, 18 * S);
+    (Point From, Size Size, double Zoom)? resizing;
+
+    // The new size for a drag of (dx, dy) from a card of the given size: the average of the width and height stretch.
+    public static double Resized(double zoom, Size start, int dx, int dy) =>
+        Math.Round(Math.Clamp(zoom * ((start.Width + dx) / (double)start.Width + (start.Height + dy) / (double)start.Height) / 2, MinZoom, MaxZoom), 2);
     // Layout in unscaled pixels (×S on screen), set by the frame: the iron-bound card, or the thinner wood panel in compact mode.
     float CardWidth => settings.Compact ? 246 : 316;
     float Edge => Theme.Warcraft ? (settings.Compact ? 12 : 17) : (settings.Compact ? 6 : 8); // frame thickness at the sides and bottom
@@ -1128,7 +1137,8 @@ sealed class WidgetForm : Form
                 Toggle("Show weekly limit", () => settings.ShowWeek, v => { settings.ShowWeek = v; settings.ShowSession |= !v; }),
                 Toggle("Show chats panel", () => settings.ShowChats, v => { settings.ShowChats = v; chats = []; chatsDirty = true; }),
                 new ToolStripSeparator(),
-                Toggle("Warcraft III look", () => settings.Warcraft, v => { settings.Warcraft = Theme.Warcraft = v; ApplyStyle(); })),
+                Toggle("Warcraft III look", () => settings.Warcraft, v => { settings.Warcraft = Theme.Warcraft = v; ApplyStyle(); }),
+                new ToolStripMenuItem("Reset size", null, (_, _) => { settings.Zoom = 1; settings.Save(); ApplyLayout(); })),
             Submenu("Alerts",
                 Toggle("Notify when a limit resets", () => settings.NotifyOnReset, v => settings.NotifyOnReset = v),
                 Toggle("Warn at 80% and 95%", () => settings.WarnHigh, v => settings.WarnHigh = v),
@@ -1316,6 +1326,7 @@ sealed class WidgetForm : Form
             return;
         }
         if (e.Button != MouseButtons.Left) return;
+        if (GripBox.Contains(e.Location) && !settings.Locked) { resizing = (Cursor.Position, ClientSize, settings.Zoom); return; }
         if (ChatAt(e.Location) is { } chat) { OpenChat(chat); return; }
         if (!settings.Compact) // compact mode has no buttons
         {
@@ -1333,11 +1344,26 @@ sealed class WidgetForm : Form
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
+        if (resizing is var (from, size, zoom0))
+        {
+            double zoom = Resized(zoom0, size, Cursor.Position.X - from.X, Cursor.Position.Y - from.Y);
+            if (zoom != settings.Zoom) { settings.Zoom = zoom; ApplyLayout(); }
+            return;
+        }
+        Cursor = GripBox.Contains(e.Location) && !settings.Locked ? Cursors.SizeNWSE : Theme.Warcraft ? Art.Cursor : Cursors.Default;
         var chat = ChatAt(e.Location);
         if (chat?.Id == hoveredChat) return;
         hoveredChat = chat?.Id;
         if (chat == null) chatTip.Hide(this);
         else ShowChatTip(chat);
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        base.OnMouseUp(e);
+        if (resizing == null) return;
+        resizing = null;
+        settings.Save();
     }
 
     // Beside the card, never over it: a tip that lands under the cursor takes the mouse, hides itself, and flickers.
@@ -1550,6 +1576,14 @@ sealed class WidgetForm : Form
                 g.DrawString(name, Art.Covers(name) ? nameFont : nameFallback, fgBrush, nameBox, ellipsis);
             }
         }
+
+        // The resize grip: three short diagonal strokes in the corner, gold on the iron frame, grey on the plain card.
+        if (!settings.Locked)
+            using (var grip = new Pen(Theme.Warcraft ? Theme.Gold : Theme.Muted, Math.Max(1, 1.4f * s)))
+            {
+                float gx = ClientSize.Width - 5 * s, gy = ClientSize.Height - 5 * s;
+                for (int k = 1; k <= 3; k++) g.DrawLine(grip, gx - 3.5f * k * s, gy, gx, gy - 3.5f * k * s);
+            }
 
         if (settings.Compact)
         {
@@ -1878,6 +1912,9 @@ static class SelfTest
         Check(new Limit(50, t0.AddHours(2.5)).FullAt(TimeSpan.FromHours(5)) == null
             && new Limit(10, t0.AddHours(4.9)).FullAt(TimeSpan.FromHours(5)) == null, "no forecast when it lasts, or too early to tell");
         Check(Fmt.Detail("5-hour", pace, TimeSpan.FromHours(5)).Contains("full ~"), "forecast shows on the card");
+        var card = new Size(316, 200);
+        Check(WidgetForm.Resized(1, card, 158, 100) == 1.5 && WidgetForm.Resized(1, card, -158, -100) == 0.7
+            && WidgetForm.Resized(2, card, 5000, 5000) == 2.5 && WidgetForm.Resized(1.2, card, 0, 0) == 1.2, "the corner grip scales within 70%-250%");
         Check(WidgetForm.Crossed(79, 81) && WidgetForm.Crossed(70, 96) && !WidgetForm.Crossed(81, 90) && !WidgetForm.Crossed(96, 99), "warns once per threshold");
         Check(Art.Card != null && Art.Panel != null && Art.Button != null && Art.Bar != null && Art.Serif.Name == "Cinzel"
             && Art.Cursor != Cursors.Default, "Warcraft art, font and cursor ship in art\\");
