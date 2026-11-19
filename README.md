@@ -2,9 +2,9 @@
 
 A small Windows desktop widget for [Claude Code](https://code.claude.com): your plan's usage limits (5-hour and weekly) with a forecast of when you'll run out, and your background Claude Code chats with their status and context use, one click away. It comes in a Warcraft III look, with orc voices and game sounds, or as a plain dark card.
 
-[![The widget in action: click for the video with sound](docs/preview.gif)](docs/preview.mp4)
+[![The widget in action: click for the video with sound](docs/preview.gif)](https://cdn.jsdelivr.net/gh/FXology/claude-warcraft-widget@main/docs/preview.mp4)
 
-*Click it for [the video with sound](docs/preview.mp4). The chats and numbers in it are made up. Its game sounds are © Blizzard Entertainment, used under the [Blizzard Video Policy](https://www.blizzard.com/en-us/legal/dd76b654-f2c4-4aaa-ba49-ca3122de2376/blizzard-video-policy).*
+*Click it for [the video with sound](https://cdn.jsdelivr.net/gh/FXology/claude-warcraft-widget@main/docs/preview.mp4). The chats and numbers in it are made up. Its game sounds are © Blizzard Entertainment, used under the [Blizzard Video Policy](https://www.blizzard.com/en-us/legal/dd76b654-f2c4-4aaa-ba49-ca3122de2376/blizzard-video-policy).*
 
 | Warcraft III look | Plain look |
 | --- | --- |
