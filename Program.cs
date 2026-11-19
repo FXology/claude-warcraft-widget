@@ -217,6 +217,7 @@ sealed class Settings
     public bool Voices { get; set; } = true; // orc peon lines for chat and widget events
     public bool Warcraft { get; set; } = true; // the Warcraft III look; off is the plain dark card
     public double Zoom { get; set; } = 1; // the card's size, set by dragging its corner grip
+    public double ExtraWidth { get; set; } // added width (unscaled px), set by dragging the card's right edge
     public string? LastFolder { get; set; } // where the last "+" chat started
 
     public static Settings Load()
@@ -787,12 +788,19 @@ sealed class WidgetForm : Form
     // The resize grip in the bottom-right corner, on the frame; dragging it scales the whole card, text included.
     RectangleF GripBox => new(ClientSize.Width - 18 * S, ClientSize.Height - 18 * S, 18 * S, 18 * S);
     (Point From, Size Size, double Zoom)? resizing;
+    (int FromX, double Extra)? widening;
+    const double MaxExtraWidth = 500;
+    // The card's right edge (above the grip): dragging it changes only the width, so long chat names fit.
+    bool OnRightEdge(Point p) => !settings.Locked && p.X >= ClientSize.Width - 6 * S && !GripBox.Contains(p);
+
+    // The extra width after dragging the right edge by dx screen pixels at this scale.
+    public static double Widened(double extra, int dx, float scale) => Math.Clamp(Math.Round(extra + dx / scale), 0, MaxExtraWidth);
 
     // The new size for a drag of (dx, dy) from a card of the given size: the average of the width and height stretch.
     public static double Resized(double zoom, Size start, int dx, int dy) =>
         Math.Round(Math.Clamp(zoom * ((start.Width + dx) / (double)start.Width + (start.Height + dy) / (double)start.Height) / 2, MinZoom, MaxZoom), 2);
     // Layout in unscaled pixels (×S on screen), set by the frame: the iron-bound card, or the thinner wood panel in compact mode.
-    float CardWidth => settings.Compact ? 246 : 316;
+    float CardWidth => (settings.Compact ? 246 : 316) + (float)Math.Clamp(settings.ExtraWidth, 0, MaxExtraWidth);
     float Edge => Theme.Warcraft ? (settings.Compact ? 12 : 17) : (settings.Compact ? 6 : 8); // frame thickness at the sides and bottom
     float Top0 => Theme.Warcraft ? (settings.Compact ? 13 : 24) : (settings.Compact ? 7 : 12); // first line, under the frame top and its hinges
     float Pad => Edge + 6;                     // text inset
@@ -1138,7 +1146,7 @@ sealed class WidgetForm : Form
                 Toggle("Show chats panel", () => settings.ShowChats, v => { settings.ShowChats = v; chats = []; chatsDirty = true; }),
                 new ToolStripSeparator(),
                 Toggle("Warcraft III look", () => settings.Warcraft, v => { settings.Warcraft = Theme.Warcraft = v; ApplyStyle(); }),
-                new ToolStripMenuItem("Reset size", null, (_, _) => { settings.Zoom = 1; settings.Save(); ApplyLayout(); })),
+                new ToolStripMenuItem("Reset size", null, (_, _) => { settings.Zoom = 1; settings.ExtraWidth = 0; settings.Save(); ApplyLayout(); })),
             Submenu("Alerts",
                 Toggle("Notify when a limit resets", () => settings.NotifyOnReset, v => settings.NotifyOnReset = v),
                 Toggle("Warn at 80% and 95%", () => settings.WarnHigh, v => settings.WarnHigh = v),
@@ -1327,6 +1335,7 @@ sealed class WidgetForm : Form
         }
         if (e.Button != MouseButtons.Left) return;
         if (GripBox.Contains(e.Location) && !settings.Locked) { resizing = (Cursor.Position, ClientSize, settings.Zoom); return; }
+        if (OnRightEdge(e.Location)) { widening = (Cursor.Position.X, settings.ExtraWidth); return; }
         if (ChatAt(e.Location) is { } chat) { OpenChat(chat); return; }
         if (!settings.Compact) // compact mode has no buttons
         {
@@ -1344,13 +1353,21 @@ sealed class WidgetForm : Form
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
+        if (widening is var (fromX, extra0))
+        {
+            double extra = Widened(extra0, Cursor.Position.X - fromX, S);
+            if (extra != settings.ExtraWidth) { settings.ExtraWidth = extra; ApplyLayout(); }
+            return;
+        }
         if (resizing is var (from, size, zoom0))
         {
             double zoom = Resized(zoom0, size, Cursor.Position.X - from.X, Cursor.Position.Y - from.Y);
             if (zoom != settings.Zoom) { settings.Zoom = zoom; ApplyLayout(); }
             return;
         }
-        Cursor = GripBox.Contains(e.Location) && !settings.Locked ? Cursors.SizeNWSE : Theme.Warcraft ? Art.Cursor : Cursors.Default;
+        Cursor = GripBox.Contains(e.Location) && !settings.Locked ? Cursors.SizeNWSE
+            : OnRightEdge(e.Location) ? Cursors.SizeWE
+            : Theme.Warcraft ? Art.Cursor : Cursors.Default;
         var chat = ChatAt(e.Location);
         if (chat?.Id == hoveredChat) return;
         hoveredChat = chat?.Id;
@@ -1361,8 +1378,9 @@ sealed class WidgetForm : Form
     protected override void OnMouseUp(MouseEventArgs e)
     {
         base.OnMouseUp(e);
-        if (resizing == null) return;
+        if (resizing == null && widening == null) return;
         resizing = null;
+        widening = null;
         settings.Save();
     }
 
@@ -1912,6 +1930,8 @@ static class SelfTest
         Check(new Limit(50, t0.AddHours(2.5)).FullAt(TimeSpan.FromHours(5)) == null
             && new Limit(10, t0.AddHours(4.9)).FullAt(TimeSpan.FromHours(5)) == null, "no forecast when it lasts, or too early to tell");
         Check(Fmt.Detail("5-hour", pace, TimeSpan.FromHours(5)).Contains("full ~"), "forecast shows on the card");
+        Check(WidgetForm.Widened(0, 150, 1.5f) == 100 && WidgetForm.Widened(50, -400, 1) == 0 && WidgetForm.Widened(450, 300, 1) == 500,
+            "the right edge widens within 0-500 px, in the card's own scale");
         var card = new Size(316, 200);
         Check(WidgetForm.Resized(1, card, 158, 100) == 1.5 && WidgetForm.Resized(1, card, -158, -100) == 0.7
             && WidgetForm.Resized(2, card, 5000, 5000) == 2.5 && WidgetForm.Resized(1.2, card, 0, 0) == 1.2, "the corner grip scales within 70%-250%");
