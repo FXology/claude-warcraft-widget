@@ -186,6 +186,12 @@ static class Theme
     public static LinearGradientBrush Gradient(RectangleF fill, double used, bool vertical) => vertical
         ? new(RectangleF.Inflate(fill, 0, 1), Level(used), Level(0), LinearGradientMode.Vertical)
         : new(RectangleF.Inflate(fill, 1, 0), Level(0), Level(used), LinearGradientMode.Horizontal);
+
+    // The Warcraft bar's fill: WoW's loading-bar blue while there's room, then the level's orange to red from 80%.
+    public static Color BarFill(double used) => used < 80 ? Color.FromArgb(28, 88, 142) : Level(used);
+
+    // Lighter (k > 1) or darker (k < 1).
+    public static Color Shade(Color c, float k) => Color.FromArgb(Math.Min(255, (int)(c.R * k)), Math.Min(255, (int)(c.G * k)), Math.Min(255, (int)(c.B * k)));
 }
 
 sealed class Settings
@@ -239,10 +245,57 @@ sealed class Settings
 static class Art
 {
     static readonly string Dir = Path.Combine(AppContext.BaseDirectory, "art");
-    public static readonly Image? Card = Load("card.png"), Panel = Load("panel.png"), Button = Load("button.png"), Bar = Load("bar.png");
+    public static readonly Image? Card = Load("card.png"), Panel = Load("panel.png"), Button = Load("button.png");
     // The part of each image that never repeats, per side, in the image's own pixels. The card keeps its hinges (x 59-189 and 332-462) and its top and bottom boards fixed; between the seams at y 150 and 600
-    // its whole boards repeat. The panel and the bars keep their corners and frame.
-    public static readonly Padding CardEdge = new(200, 150, 208, 88), PanelEdge = new(76), BarEdge = new(41);
+    // its whole boards repeat. The panel keeps its corners and frame.
+    public static readonly Padding CardEdge = new(200, 150, 208, 88), PanelEdge = new(76);
+
+    // A loading bar after WoW's loading screen, drawn here rather than shipped as Blizzard's texture: a thin silver-rimmed
+    // frame, a dark red-brown well, and a silver spearhead cap at each end. The fill goes in BarWell(box).
+    static RectangleF BarTrack(RectangleF box) => RectangleF.FromLTRB(box.Left + box.Height * 0.62f, box.Top, box.Right - box.Height * 0.62f, box.Bottom);
+    public static RectangleF BarWell(RectangleF box)
+    {
+        var track = BarTrack(box);
+        float rim = Math.Max(2, box.Height * 0.2f), cap = box.Height * 0.38f; // clear of the rim, and of the caps' inner edge
+        return RectangleF.FromLTRB(track.Left + cap, track.Top + rim, track.Right - cap, track.Bottom - rim);
+    }
+
+    public static void LoadingBar(Graphics g, RectangleF box)
+    {
+        var track = BarTrack(box);
+        float line = Math.Max(1, box.Height / 14);
+        using (var frame = new SolidBrush(Color.FromArgb(12, 10, 9))) g.FillRectangle(frame, track);
+        var well = BarWell(box);
+        using (var wood = new LinearGradientBrush(RectangleF.Inflate(well, 0, 1), Color.Black, Color.Black, LinearGradientMode.Vertical)
+        {
+            InterpolationColors = new ColorBlend { Colors = [Color.FromArgb(22, 9, 6), Color.FromArgb(46, 22, 13), Color.FromArgb(26, 11, 7)], Positions = [0f, 0.4f, 1f] },
+        }) g.FillRectangle(wood, well);
+        using (var top = new Pen(Color.FromArgb(168, 164, 156), line)) g.DrawLine(top, track.Left, track.Top + line / 2, track.Right, track.Top + line / 2);
+        using (var bottom = new Pen(Color.FromArgb(96, 93, 88), line)) g.DrawLine(bottom, track.Left, track.Bottom - line / 2, track.Right, track.Bottom - line / 2);
+        foreach (bool right in new[] { false, true }) Cap(g, right ? track.Right : track.Left, box.Top + box.Height / 2, box.Height / 2, right);
+    }
+
+    // A silver spearhead pointing outward over the track's end, with a dark hollow; drawn in units of half the bar's height.
+    static void Cap(Graphics g, float x, float cy, float u, bool right)
+    {
+        using var body = new GraphicsPath();
+        body.AddBezier(0.7f, -1.2f, -0.3f, -1.25f, -0.9f, -0.5f, -1.25f, 0);
+        body.AddBezier(-1.25f, 0, -0.9f, 0.5f, -0.3f, 1.25f, 0.7f, 1.2f);
+        body.AddBezier(0.7f, 1.2f, 0.45f, 0.6f, 0.45f, -0.6f, 0.7f, -1.2f);
+        using var hollow = new GraphicsPath();
+        hollow.AddPolygon(new PointF[] { new(-0.6f, 0), new(-0.05f, -0.45f), new(0.32f, 0), new(-0.05f, 0.45f) });
+        using (var place = new Matrix(right ? -u : u, 0, 0, u, x, cy)) { body.Transform(place); hollow.Transform(place); }
+        using (var silver = new LinearGradientBrush(RectangleF.Inflate(body.GetBounds(), 0, 1), Color.Black, Color.Black, LinearGradientMode.Vertical)
+        {
+            InterpolationColors = new ColorBlend
+            {
+                Colors = [Color.FromArgb(232, 230, 224), Color.FromArgb(122, 120, 114), Color.FromArgb(196, 193, 186), Color.FromArgb(72, 70, 66)],
+                Positions = [0f, 0.45f, 0.68f, 1f],
+            },
+        }) g.FillPath(silver, body);
+        using (var outline = new Pen(Color.FromArgb(20, 18, 16), Math.Max(1, u / 8))) g.DrawPath(outline, body);
+        using (var dark = new SolidBrush(Color.FromArgb(18, 12, 10))) g.FillPath(dark, hollow);
+    }
     // The orc gauntlet: Blizzard's, so it only arrives with the opt-in download; until then, the normal cursor.
     static Cursor? cursor;
     public static Cursor Cursor => cursor ??= LoadCursor() ?? Cursors.Default;
@@ -1528,12 +1581,7 @@ sealed class WidgetForm : Form
                     if (settings.Compact) Art.Frame(fg2, Art.Panel, ClientRectangle, Art.PanelEdge, 0.16f * s, Theme.Bg);
                     else Art.Frame(fg2, Art.Card, ClientRectangle, Art.CardEdge, 0.42f * s, Theme.Bg);
                     if (chats.Count > 0) Art.Frame(fg2, Art.Panel, Rectangle.Round(PanelBox), Art.PanelEdge, 0.16f * s, Theme.Panel);
-                    for (int i = 0; i < Rows().Count; i++) // the loading bars: a black well in a riveted iron frame (warcraftcn's input frame)
-                    {
-                        var box = BarBox(i);
-                        fg2.FillRectangle(Brushes.Black, RectangleF.Inflate(box, -box.Height / 8, -box.Height / 8));
-                        Art.Frame(fg2, Art.Bar, Rectangle.Round(box), Art.BarEdge, box.Height / 4 / Art.BarEdge.Top, Color.Black);
-                    }
+                    for (int i = 0; i < Rows().Count; i++) Art.LoadingBar(fg2, BarBox(i)); // their frames; the fill is drawn live
                 }
                 else
                 {
@@ -1593,28 +1641,20 @@ sealed class WidgetForm : Form
             }
         }
 
-        // Warcraft III loading bar. Its iron frame is in the cached background; inside it goes a glowing fill:
-        // the usage colour, lit along the top and shaded along the bottom like a tube, with a bright leading edge.
+        // The WoW loading bar. Its frame is in the cached background (Art.LoadingBar); in its well goes the fill, lit along
+        // the top and dark along the bottom like the game's, with a bright leading edge.
         void DrawBar(RectangleF bar, Limit? limit)
         {
             if (!Theme.Warcraft) { DrawPill(bar, limit); return; }
-            float t = bar.Height / 4; // the frame's thickness
-            var inner = RectangleF.Inflate(bar, -t, -t);
-            if (Art.Bar == null) using (var well = new SolidBrush(Color.Black)) g.FillRectangle(well, inner);
             if (limit is not { UsedNow: > 0 } l) return;
-            var fill = inner with { Width = Math.Max(2 * s, inner.Width * (float)(l.UsedNow / 100)) };
-            using (var b = Theme.Gradient(fill, l.UsedNow, vertical: false)) g.FillRectangle(b, fill);
-            using (var tube = new LinearGradientBrush(RectangleF.Inflate(fill, 0, 1), Color.Black, Color.Black, LinearGradientMode.Vertical)
+            var well = Art.BarWell(bar);
+            var fill = well with { Width = Math.Max(2 * s, well.Width * (float)(Math.Min(l.UsedNow, 100) / 100)) };
+            var c = Theme.BarFill(l.UsedNow);
+            using (var b = new LinearGradientBrush(RectangleF.Inflate(fill, 0, 1), Color.Black, Color.Black, LinearGradientMode.Vertical)
             {
-                InterpolationColors = new ColorBlend
-                {
-                    Colors = [Color.FromArgb(120, 255, 255, 230), Color.FromArgb(0, 255, 255, 255), Color.FromArgb(130, 0, 0, 0)],
-                    Positions = [0f, 0.45f, 1f],
-                },
-            }) g.FillRectangle(tube, fill);
-            var tip = fill with { X = fill.Right - Math.Min(fill.Width, 8 * s), Width = Math.Min(fill.Width, 8 * s) };
-            using (var glow = new LinearGradientBrush(RectangleF.Inflate(tip, 1, 0), Color.FromArgb(0, 255, 250, 220), Color.FromArgb(200, 255, 250, 220), LinearGradientMode.Horizontal))
-                g.FillRectangle(glow, tip);
+                InterpolationColors = new ColorBlend { Colors = [Theme.Shade(c, 1.7f), c, Theme.Shade(c, 0.4f)], Positions = [0f, 0.45f, 1f] },
+            }) g.FillRectangle(b, fill);
+            using (var edge = new Pen(Color.FromArgb(170, Theme.Shade(c, 2.2f)), Math.Max(1, s))) g.DrawLine(edge, fill.Right - s / 2, fill.Top, fill.Right - s / 2, fill.Bottom);
             if (settings.PulseHigh && l.UsedNow >= PulseAt)
             {
                 double phase = 0.5 + 0.5 * Math.Sin(Environment.TickCount64 / 1000.0 * Math.PI * 2 * 0.8); // 0.8 Hz
@@ -1998,9 +2038,14 @@ static class SelfTest
         Check(WidgetForm.Resized(1, card, 158, 100) == 1.5 && WidgetForm.Resized(1, card, -158, -100) == 0.7
             && WidgetForm.Resized(2, card, 5000, 5000) == 2.5 && WidgetForm.Resized(1.2, card, 0, 0) == 1.2, "the corner grip scales within 70%-250%");
         Check(WidgetForm.Crossed(79, 81) && WidgetForm.Crossed(70, 96) && !WidgetForm.Crossed(81, 90) && !WidgetForm.Crossed(96, 99), "warns once per threshold");
-        Check(Art.Card != null && Art.Panel != null && Art.Button != null && Art.Bar != null && Art.Serif.Name == "Cinzel",
+        Check(Art.Card != null && Art.Panel != null && Art.Button != null && Art.Serif.Name == "Cinzel",
             "the Warcraft frames and font ship in art\\");
         Check(Art.Covers("BIG NEW TUNNEL LOGIC · café…") && !Art.Covers("Привет"), "Cinzel only for text it can spell");
+        Theme.Warcraft = true;
+        Check(Theme.BarFill(10) == Theme.BarFill(79) && Theme.BarFill(80) == Theme.Level(80) && Theme.BarFill(100) == Theme.Level(100),
+            "the Warcraft bar is WoW blue, then the warning colours from 80%");
+        var bar = new RectangleF(10, 10, 200, 16);
+        Check(bar.Contains(Art.BarWell(bar)) && Art.BarWell(bar).Width > 150, "the bar's well sits inside its box, between the caps");
         Check(File.Exists(Path.Combine(AppContext.BaseDirectory, "sounds", "explode.wav")), "our own splat ships in sounds\\");
         var (su, sc, sid, sline) = StatusLine.Parse("""{"session_id":"abc-1","model":{"display_name":"Opus 5.5"},"context_window":{"used_percentage":41.5},"rate_limits":{"five_hour":{"used_percentage":15,"resets_at":1},"seven_day":{"used_percentage":35.4,"resets_at":2}}}""");
         Check(sline == "Opus 5.5 · ctx 42% · 5h 15% · 7d 35%" && su?["rate_limits"] != null && sc?["used_percentage"]?.GetValue<double>() == 41.5 && sid == "abc-1",
@@ -2014,7 +2059,7 @@ static class SelfTest
         Check(Installer.WithStatusLine(null, "x").Replaced == null && Installer.WithStatusLine("""{"statusLine":{"command":"x"}}""", "x").Replaced == null,
             "a fresh or already-hooked setup replaces nothing");
         var payload = typeof(Installer).Assembly.GetManifestResourceNames().Where(n => n.StartsWith("payload/")).ToList();
-        Check(payload.Count == 10 && payload.Any(n => n.EndsWith("card.png")) && payload.Any(n => n.EndsWith("explode.wav"))
+        Check(payload.Count == 9 && payload.Any(n => n.EndsWith("card.png")) && payload.Any(n => n.EndsWith("explode.wav"))
             && !payload.Any(n => n.Contains("Peon") || n.Contains("Grunt") || n.EndsWith(".cur")),
             "the setup carries the art and our own sounds, and no Blizzard audio");
         Check(Sound.PackCoversLines, "every orc line can be fetched (and hash-checked), and nothing unused is");
