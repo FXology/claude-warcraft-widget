@@ -1161,9 +1161,9 @@ sealed class WidgetForm : Form
         var opacity = Submenu("Opacity", [.. new[] { 100, 90, 80, 70, 60, 50, 40, 30, 20 }.Select(pct =>
             Toggle($"{pct}%", () => (int)Math.Round(Opacity * 100) == pct, _ => SetOpacity(pct / 100.0)))]);
         opacity.DropDownItems.Add(new ToolStripMenuItem("Tip: scroll on the widget") { Enabled = false });
-        var getExtras = new ToolStripMenuItem("Get Warcraft sounds & cursor…", null, (_, _) => OfferWarcraftExtras());
+        var getExtras = new ToolStripMenuItem("Get Warcraft sounds && cursor…", null, (_, _) => OfferWarcraftExtras()); // &&: a single & would mark a shortcut key and vanish
         menuRefreshers.Add(() => (getExtras.Enabled, getExtras.Text) = Sound.HasExtras
-            ? (false, "Warcraft sounds & cursor: installed") : (true, "Get Warcraft sounds & cursor…"));
+            ? (false, "Warcraft sounds && cursor: installed") : (true, "Get Warcraft sounds && cursor…"));
         var toggle = new ToolStripMenuItem("Hide to tray", null, (_, _) => ToggleVisible());
 
         var menu = new ContextMenuStrip();
