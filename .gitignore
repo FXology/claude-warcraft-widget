@@ -1,0 +1,13 @@
+bin/
+obj/
+dist/
+setup/
+*.rar
+*.zip
+*.exe
+ClaudeUsageWidget-source.md
+
+# Blizzard's audio never goes in the repo: only our own sound is tracked.
+sounds/*
+!sounds/explode.wav
+woohoohoo.mp3
