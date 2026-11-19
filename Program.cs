@@ -239,8 +239,9 @@ static class Art
 {
     static readonly string Dir = Path.Combine(AppContext.BaseDirectory, "art");
     public static readonly Image? Card = Load("card.png"), Panel = Load("panel.png"), Button = Load("button.png"), Bar = Load("bar.png");
-    // Frame thickness inside each image, in the image's own pixels (the card's top includes its hinges).
-    public static readonly Padding CardEdge = new(40, 48, 40, 40), PanelEdge = new(76), BarEdge = new(41);
+    // The part of each image that never repeats, per side, in the image's own pixels. The card keeps its hinges (x 59-189 and 332-462) and its top and bottom boards fixed; between the seams at y 150 and 600
+    // its whole boards repeat. The panel and the bars keep their corners and frame.
+    public static readonly Padding CardEdge = new(200, 150, 208, 88), PanelEdge = new(76), BarEdge = new(41);
     public static readonly Cursor Cursor = LoadCursor(); // the orc gauntlet
 
     // Through Windows' own loader: WinForms' Cursor(file) drops a colour cursor's colours and shows it black.
@@ -272,22 +273,30 @@ static class Art
         ? new(Serif, px, bold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Pixel)
         : new(bold ? "Segoe UI Semibold" : "Segoe UI", px, GraphicsUnit.Pixel);
 
-    // Nine-slice: corners keep their shape, edges stretch along their length, the middle fills. k scales the frame.
+    // Paints a frame image into d at scale k without stretching it. The fixed parts (corners, and the card's hinges) keep their
+    // shape; the parts between them repeat: mirrored side to side, so the wood and iron run on without a seam, and straight
+    // down, so the card's boards stay whole. `edge` is the fixed part on each side, in the image's own pixels.
     public static void Frame(Graphics g, Image? img, Rectangle d, Padding edge, float k, Color fallback)
     {
         if (img == null) { using var b = new SolidBrush(fallback); g.FillRectangle(b, d); return; }
-        // On a box smaller than two frame edges, shrink the edges instead of overlapping them.
-        float fx = Math.Min(1, d.Width / ((edge.Left + edge.Right) * k)), fy = Math.Min(1, d.Height / ((edge.Top + edge.Bottom) * k));
-        int l = (int)(edge.Left * k * fx), r = (int)(edge.Right * k * fx), t = (int)(edge.Top * k * fy), b2 = (int)(edge.Bottom * k * fy);
-        int[] dx = [d.Left, d.Left + l, d.Right - r, d.Right], dy = [d.Top, d.Top + t, d.Bottom - b2, d.Bottom];
+        // On a box smaller than the fixed parts, shrink them instead of overlapping them.
+        float kx = Math.Min(k, d.Width / (float)(edge.Left + edge.Right)), ky = Math.Min(k, d.Height / (float)(edge.Top + edge.Bottom));
+        int[] dx = [d.Left, d.Left + (int)(edge.Left * kx), d.Right - (int)(edge.Right * kx), d.Right];
+        int[] dy = [d.Top, d.Top + (int)(edge.Top * ky), d.Bottom - (int)(edge.Bottom * ky), d.Bottom];
         int[] sx = [0, edge.Left, img.Width - edge.Right, img.Width], sy = [0, edge.Top, img.Height - edge.Bottom, img.Height];
         using var clamp = new ImageAttributes();
-        clamp.SetWrapMode(WrapMode.TileFlipXY); // no smeared seams between the pieces
+        clamp.SetWrapMode(WrapMode.TileFlipXY); // no smeared edges on the fixed pieces
         for (int i = 0; i < 3; i++)
             for (int j = 0; j < 3; j++)
-                if (dx[i + 1] > dx[i] && dy[j + 1] > dy[j])
-                    g.DrawImage(img, Rectangle.FromLTRB(dx[i], dy[j], dx[i + 1], dy[j + 1]),
-                        sx[i], sy[j], sx[i + 1] - sx[i], sy[j + 1] - sy[j], GraphicsUnit.Pixel, clamp);
+            {
+                var dst = Rectangle.FromLTRB(dx[i], dy[j], dx[i + 1], dy[j + 1]);
+                var src = Rectangle.FromLTRB(sx[i], sy[j], sx[i + 1], sy[j + 1]);
+                if (dst.Width <= 0 || dst.Height <= 0 || src.Width <= 0 || src.Height <= 0) continue;
+                if (i != 1 && j != 1) { g.DrawImage(img, dst, src.X, src.Y, src.Width, src.Height, GraphicsUnit.Pixel, clamp); continue; }
+                using var tiles = new TextureBrush(img, i == 1 ? WrapMode.TileFlipX : WrapMode.Tile, src);
+                tiles.Transform = new Matrix(kx, 0, 0, ky, dst.X, dst.Y); // repeat from the piece's own corner, at the frame's scale
+                g.FillRectangle(tiles, dst);
+            }
     }
 }
 
