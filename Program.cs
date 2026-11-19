@@ -218,6 +218,7 @@ sealed class Settings
     public bool Warcraft { get; set; } = true; // the Warcraft III look; off is the plain dark card
     public double Zoom { get; set; } = 1; // the card's size, set by dragging its corner grip
     public double ExtraWidth { get; set; } // added width (unscaled px), set by dragging the card's right edge
+    public bool AskedForExtras { get; set; } // the Warcraft sounds and cursor popup has been shown once
     public string? LastFolder { get; set; } // where the last "+" chat started
 
     public static Settings Load()
@@ -242,13 +243,17 @@ static class Art
     // The part of each image that never repeats, per side, in the image's own pixels. The card keeps its hinges (x 59-189 and 332-462) and its top and bottom boards fixed; between the seams at y 150 and 600
     // its whole boards repeat. The panel and the bars keep their corners and frame.
     public static readonly Padding CardEdge = new(200, 150, 208, 88), PanelEdge = new(76), BarEdge = new(41);
-    public static readonly Cursor Cursor = LoadCursor(); // the orc gauntlet
+    // The orc gauntlet: Blizzard's, so it only arrives with the opt-in download; until then, the normal cursor.
+    static Cursor? cursor;
+    public static Cursor Cursor => cursor ??= LoadCursor() ?? Cursors.Default;
+    public static void ReloadCursor() => cursor = null;
 
     // Through Windows' own loader: WinForms' Cursor(file) drops a colour cursor's colours and shows it black.
-    static Cursor LoadCursor()
+    static Cursor? LoadCursor()
     {
-        var handle = Native.LoadCursorFromFile(Path.Combine(Dir, "orc.cur"));
-        return handle != 0 ? new Cursor(handle) : Cursors.Default;
+        var file = Path.Combine(Dir, "orc.cur");
+        var handle = File.Exists(file) ? Native.LoadCursorFromFile(file) : 0;
+        return handle != 0 ? new Cursor(handle) : null;
     }
 
     // Cinzel only has Latin letters; anything else (a chat named in Cyrillic, say) falls back to Segoe UI instead of boxes.
@@ -371,8 +376,8 @@ static class Sound
         [Voice.CardHide] = ["CardHide"],
         [Voice.OptionTick] = ["OptionTick"],       // an options checkbox
     };
-    // A shared copy carries no Blizzard audio and can only fetch the orc lines (the WoW sounds would need converting), so
-    // where a WoW sound is missing an orc speaks instead; the plain clicks (menu, show/hide, tick) just stay quiet.
+    // Where a WoW sound is missing (you add those yourself), an orc line from the opt-in download speaks instead; with neither,
+    // or for the plain clicks (menu, show/hide, tick), it stays quiet.
     static readonly Dictionary<Voice, string[]> Fallbacks = new()
     {
         [Voice.Open] = ["PeonWhat1", "PeonWhat3"],       // "Yes?" / "What you want?"
@@ -386,31 +391,35 @@ static class Sound
     // Clicks and fanfares play at once; spoken lines wait their turn, one at a time like the game.
     static readonly HashSet<Voice> Immediate = [Voice.Explode, Voice.WeeklyReset, Voice.SessionReset,
         Voice.MenuOpen, Voice.MenuClose, Voice.CardShow, Voice.CardHide, Voice.OptionTick];
-    public static IEnumerable<string> VoiceFiles => Lines.Values.SelectMany(n => n).Select(n => Path.Combine(AppContext.BaseDirectory, "sounds", n + ".wav"));
     static readonly HashSet<string> openVoices = [];
     static long lastVoice = -10_000;
 
-    public static void Say(Voice voice, int volume)
+    // Returns whether anything played.
+    public static bool Say(Voice voice, int volume)
     {
         bool immediate = Immediate.Contains(voice);
-        if (!immediate && Environment.TickCount64 - lastVoice < 1500) return;
+        if (!immediate && Environment.TickCount64 - lastVoice < 1500) return false;
         string[] Present(string[]? n) => [.. (n ?? []).Where(x => File.Exists(Path.Combine(AppContext.BaseDirectory, "sounds", x + ".wav")))];
         var names = Present(Lines[voice]) is { Length: > 0 } own ? own : Present(Fallbacks.GetValueOrDefault(voice));
-        if (names.Length == 0) return;
+        if (names.Length == 0) return false;
         var name = names[Random.Shared.Next(names.Length)];
         var file = Path.Combine(AppContext.BaseDirectory, "sounds", name + ".wav");
         if (!openVoices.Contains(name))
         {
-            if (Native.mciSendString($"open \"{file}\" type mpegvideo alias {name}", null, 0, 0) != 0) return;
+            if (Native.mciSendString($"open \"{file}\" type mpegvideo alias {name}", null, 0, 0) != 0) return false;
             openVoices.Add(name);
         }
         if (!immediate) lastVoice = Environment.TickCount64;
         Native.mciSendString($"setaudio {name} volume to {Math.Clamp(volume, 0, 100) * 10}", null, 0, 0);
         Native.mciSendString($"play {name} from 0", null, 0, 0);
+        return true;
     }
 
-    // The orc lines are Blizzard's, so a copy you hand on can leave them out: whatever is missing is fetched once from the
-    // pack peon-ping uses (github.com/PeonPing/og-packs) and kept only if it matches the hash pinned here.
+    // The orc lines and the gauntlet cursor are Blizzard's, so the widget carries neither and never fetches them by itself:
+    // only when the user asks, after being told what they are (see WidgetForm.OfferWarcraftExtras). They come from community
+    // projects on GitHub, not from Blizzard, and each file is kept only if it matches the hash pinned here.
+    const string CursorUrl = "https://raw.githubusercontent.com/TheOrcDev/warcraftcn-ui/c4cff745817de3d135ef56716338e6b3fa5fc7c4/components/ui/warcraftcn/assets/cursors/orc.cur",
+        CursorSha256 = "d2974b616a208f4d8de9edee08da0229c74e48d0d184032eb160585f36071956";
     static readonly Dictionary<string, (string Path, string Sha256)> Pack = new()
     {
         ["PeonYes1"] = ("v1.0.0/peon", "a644ec5632e566df6c057e124319884b5123eea5d5f54b04280b097c2231cc0b"),
@@ -438,22 +447,29 @@ static class Sound
         }
     }
 
-    public static async Task FetchMissing()
+    // Every Blizzard file the opt-in download brings: the orc lines and the cursor, with where each goes and comes from.
+    static IEnumerable<(string File, string Url, string Sha256)> Extras =>
+        Pack.Select(p => (Path.Combine("sounds", p.Key + ".wav"), $"https://raw.githubusercontent.com/PeonPing/og-packs/{p.Value.Path}/sounds/{p.Key}.wav", p.Value.Sha256))
+            .Append((Path.Combine("art", "orc.cur"), CursorUrl, CursorSha256));
+    public static bool HasExtras => Extras.All(x => File.Exists(Path.Combine(AppContext.BaseDirectory, x.File)));
+
+    // Downloads what's missing; returns whether everything is there afterwards.
+    public static async Task<bool> FetchExtras()
     {
-        var dir = Path.Combine(AppContext.BaseDirectory, "sounds");
-        var missing = Pack.Where(p => !File.Exists(Path.Combine(dir, p.Key + ".wav"))).ToList();
-        if (missing.Count == 0) return;
         try
         {
-            Directory.CreateDirectory(dir);
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-            foreach (var (name, (path, sha)) in missing)
+            foreach (var (file, url, sha) in Extras.Where(x => !File.Exists(Path.Combine(AppContext.BaseDirectory, x.File))))
             {
-                var bytes = await http.GetByteArrayAsync($"https://raw.githubusercontent.com/PeonPing/og-packs/{path}/sounds/{name}.wav");
-                if (Convert.ToHexStringLower(SHA256.HashData(bytes)) == sha) await File.WriteAllBytesAsync(Path.Combine(dir, name + ".wav"), bytes);
+                var bytes = await http.GetByteArrayAsync(url);
+                if (Convert.ToHexStringLower(SHA256.HashData(bytes)) != sha) continue; // changed or tampered with: not kept
+                var target = Path.Combine(AppContext.BaseDirectory, file);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                await File.WriteAllBytesAsync(target, bytes);
             }
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or UnauthorizedAccessException) { } // offline or read-only: quiet, retried next start
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or UnauthorizedAccessException) { } // offline or read-only
+        return HasExtras;
     }
 
     public static readonly string FilePath = Path.Combine(AppContext.BaseDirectory, "confetti.mp3");
@@ -868,8 +884,29 @@ sealed class WidgetForm : Form
         TransparencyKey = Theme.Warcraft ? SeeThrough : Color.Empty;
         if (IsHandleCreated) RoundCorners();
         trayLevel = int.MinValue; // repaint the tray column in this look's colours
-        if (Theme.Warcraft) _ = Sound.FetchMissing();
         ApplyLayout();
+    }
+
+    // The orc lines and the gauntlet cursor are Blizzard's: offered once at first start in the Warcraft look (and from the menu),
+    // downloaded only on a yes, with where they come from and whose they are said up front.
+    async void OfferWarcraftExtras()
+    {
+        settings.AskedForExtras = true; // first: the 1 s timer keeps ticking while the box is open
+        settings.Save();
+        var answer = MessageBox.Show(this,
+            "The Warcraft look can use the orc voice lines and the orc gauntlet cursor from Warcraft III.\n\n" +
+            "They are © Blizzard Entertainment. They are not part of this widget and not official Blizzard downloads: " +
+            "they come from community projects on GitHub (peon-ping for the voices, warcraftcn/ui for the cursor), " +
+            "and each file is checked against a known fingerprint.\n\n" +
+            "By downloading them, you take responsibility for your use of them.\n\n" +
+            "Download them now? (About 1 MB. You can also do it later from the menu: Alerts → Get Warcraft sounds & cursor.)",
+            "Warcraft sounds and cursor", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        if (answer != DialogResult.Yes) return;
+        bool done = await Sound.FetchExtras();
+        Art.ReloadCursor();
+        ApplyStyle();
+        if (done) tray.ShowBalloonTip(4000, "Claude usage", "Warcraft sounds and cursor are ready.", ToolTipIcon.Info);
+        else Warn("Couldn't download all the Warcraft sounds and cursor (offline?). Try again from the menu later.");
     }
 
     void RoundCorners()
@@ -930,7 +967,11 @@ sealed class WidgetForm : Form
         ApplyStyle();
         tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ToggleVisible(); };
         tray.Visible = true;
-        timer.Tick += (_, _) => Reload();
+        timer.Tick += (_, _) =>
+        {
+            Reload();
+            if (Theme.Warcraft && !settings.AskedForExtras && !Sound.HasExtras) OfferWarcraftExtras(); // once, after the card is up
+        };
         pulseTimer.Tick += (_, _) => Invalidate();
         if (Directory.Exists(Chats.JobsDir))
         {
@@ -1120,6 +1161,9 @@ sealed class WidgetForm : Form
         var opacity = Submenu("Opacity", [.. new[] { 100, 90, 80, 70, 60, 50, 40, 30, 20 }.Select(pct =>
             Toggle($"{pct}%", () => (int)Math.Round(Opacity * 100) == pct, _ => SetOpacity(pct / 100.0)))]);
         opacity.DropDownItems.Add(new ToolStripMenuItem("Tip: scroll on the widget") { Enabled = false });
+        var getExtras = new ToolStripMenuItem("Get Warcraft sounds & cursor…", null, (_, _) => OfferWarcraftExtras());
+        menuRefreshers.Add(() => (getExtras.Enabled, getExtras.Text) = Sound.HasExtras
+            ? (false, "Warcraft sounds & cursor: installed") : (true, "Get Warcraft sounds & cursor…"));
         var toggle = new ToolStripMenuItem("Hide to tray", null, (_, _) => ToggleVisible());
 
         var menu = new ContextMenuStrip();
@@ -1165,6 +1209,7 @@ sealed class WidgetForm : Form
                 Toggle("Notify when a limit resets", () => settings.NotifyOnReset, v => settings.NotifyOnReset = v),
                 Toggle("Warn at 80% and 95%", () => settings.WarnHigh, v => settings.WarnHigh = v),
                 Toggle("Game sounds", () => settings.Voices, v => settings.Voices = v),
+                getExtras,
                 Toggle($"Pulse bar above {PulseAt}%", () => settings.PulseHigh, v => settings.PulseHigh = v)),
             new ToolStripSeparator(),
             opacity,
@@ -1245,9 +1290,9 @@ sealed class WidgetForm : Form
             Confetti.Pop(spawn, S);
         }
         if (!settings.SoundOn) return;
-        if (Theme.Warcraft && settings.SoundFile == null) // quest complete for the week, level up for 5 hours
-            Sound.Say(weekly ? Sound.Voice.WeeklyReset : Sound.Voice.SessionReset, settings.SoundVolume);
-        else Sound.Play(settings.SoundFile, settings.SoundVolume);
+        // Quest complete for the week, level up for 5 hours (or an orc's war cry); without those, or with a file of your own, that one.
+        if (!(Theme.Warcraft && settings.SoundFile == null && Sound.Say(weekly ? Sound.Voice.WeeklyReset : Sound.Voice.SessionReset, settings.SoundVolume)))
+            Sound.Play(settings.SoundFile, settings.SoundVolume);
     }
 
     // Share Delete so statusline.js can replace the file while we read it.
@@ -1953,10 +1998,10 @@ static class SelfTest
         Check(WidgetForm.Resized(1, card, 158, 100) == 1.5 && WidgetForm.Resized(1, card, -158, -100) == 0.7
             && WidgetForm.Resized(2, card, 5000, 5000) == 2.5 && WidgetForm.Resized(1.2, card, 0, 0) == 1.2, "the corner grip scales within 70%-250%");
         Check(WidgetForm.Crossed(79, 81) && WidgetForm.Crossed(70, 96) && !WidgetForm.Crossed(81, 90) && !WidgetForm.Crossed(96, 99), "warns once per threshold");
-        Check(Art.Card != null && Art.Panel != null && Art.Button != null && Art.Bar != null && Art.Serif.Name == "Cinzel"
-            && Art.Cursor != Cursors.Default, "Warcraft art, font and cursor ship in art\\");
+        Check(Art.Card != null && Art.Panel != null && Art.Button != null && Art.Bar != null && Art.Serif.Name == "Cinzel",
+            "the Warcraft frames and font ship in art\\");
         Check(Art.Covers("BIG NEW TUNNEL LOGIC · café…") && !Art.Covers("Привет"), "Cinzel only for text it can spell");
-        Check(Sound.VoiceFiles.All(File.Exists), "peon voice lines ship in sounds\\");
+        Check(File.Exists(Path.Combine(AppContext.BaseDirectory, "sounds", "explode.wav")), "our own splat ships in sounds\\");
         var (su, sc, sid, sline) = StatusLine.Parse("""{"session_id":"abc-1","model":{"display_name":"Opus 5.5"},"context_window":{"used_percentage":41.5},"rate_limits":{"five_hour":{"used_percentage":15,"resets_at":1},"seven_day":{"used_percentage":35.4,"resets_at":2}}}""");
         Check(sline == "Opus 5.5 · ctx 42% · 5h 15% · 7d 35%" && su?["rate_limits"] != null && sc?["used_percentage"]?.GetValue<double>() == 41.5 && sid == "abc-1",
             "the built-in status line does statusline.js's job");
@@ -1969,7 +2014,8 @@ static class SelfTest
         Check(Installer.WithStatusLine(null, "x").Replaced == null && Installer.WithStatusLine("""{"statusLine":{"command":"x"}}""", "x").Replaced == null,
             "a fresh or already-hooked setup replaces nothing");
         var payload = typeof(Installer).Assembly.GetManifestResourceNames().Where(n => n.StartsWith("payload/")).ToList();
-        Check(payload.Count == 11 && payload.Any(n => n.EndsWith("card.png")) && payload.Any(n => n.EndsWith("explode.wav")) && !payload.Any(n => n.Contains("Peon") || n.Contains("Grunt")),
+        Check(payload.Count == 10 && payload.Any(n => n.EndsWith("card.png")) && payload.Any(n => n.EndsWith("explode.wav"))
+            && !payload.Any(n => n.Contains("Peon") || n.Contains("Grunt") || n.EndsWith(".cur")),
             "the setup carries the art and our own sounds, and no Blizzard audio");
         Check(Sound.PackCoversLines, "every orc line can be fetched (and hash-checked), and nothing unused is");
         Dictionary<string, string> seen = [];

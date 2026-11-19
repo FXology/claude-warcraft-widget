@@ -14,8 +14,9 @@
   <ItemGroup>
     <None Include="confetti.mp3" CopyToOutputDirectory="PreserveNewest" />
     <None Include="art\*;sounds\*.wav" CopyToOutputDirectory="PreserveNewest" />
-    <!-- What the one-file setup unpacks: the art and our own sounds. Never Blizzard's audio, which a shared copy fetches itself. -->
-    <EmbeddedResource Include="art\*;sounds\explode.wav;confetti.mp3" LogicalName="payload/%(RelativeDir)%(Filename)%(Extension)" />
+    <!-- What the one-file setup unpacks: the frames, font and our own sounds. Never Blizzard's audio or cursor, which the user
+         downloads only by choice (the Get Warcraft sounds & cursor popup). -->
+    <EmbeddedResource Include="art\*;sounds\explode.wav;confetti.mp3" Exclude="art\orc.cur" LogicalName="payload/%(RelativeDir)%(Filename)%(Extension)" />
   </ItemGroup>
   <!-- Windows won't overwrite a running exe but will rename it, so publishing works while the widget runs.
        The widget then sees the new exe and restarts into it. The previous .old goes on the next publish. -->

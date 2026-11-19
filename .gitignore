@@ -11,3 +11,6 @@ ClaudeUsageWidget-source.md
 sounds/*
 !sounds/explode.wav
 woohoohoo.mp3
+
+# The orc cursor is Blizzard's: users download it by choice, it never ships.
+art/orc.cur

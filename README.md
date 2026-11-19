@@ -6,7 +6,7 @@ A small Windows desktop widget for [Claude Code](https://code.claude.com): your 
 | --- | --- |
 | ![Warcraft III look](docs/warcraft.png) | ![Plain look](docs/simple.png) |
 
-Unofficial fan project. Not affiliated with or endorsed by Anthropic or Blizzard Entertainment.
+Unofficial fan project. Not affiliated with or endorsed by Anthropic or Blizzard Entertainment. Warcraft and Blizzard Entertainment are trademarks of Blizzard Entertainment, Inc.; Claude is a trademark of Anthropic, PBC. They're named here only to say what the widget works with and looks like.
 
 ## Install
 
@@ -20,15 +20,15 @@ Needs Windows 10 or 11 and Claude Code on a Pro or Max plan (only those plans re
 
 - **Usage limits**: 5-hour and weekly, with reset times and a countdown. When your pace this window would hit the limit before it resets, the line turns orange: `full ~16:40 · resets 18:00`. Notifications at 80% and 95%, and when a limit resets (with confetti).
 - **Chats panel**: your background Claude Code chats (`claude --bg`, agent view), marked **needs input**, **working** or **done**, each with a ring showing its context use. Hover for what it's doing now; click to open it in PowerShell; middle-click for its folder; right-click to stop or remove it. `+` starts a new background chat.
-- **Two looks** (menu → Display → Warcraft III look): the Warcraft one is drawn from [warcraftcn/ui](https://github.com/TheOrcDev/warcraftcn-ui) art, with loading-bar limits, the Cinzel font, the orc gauntlet cursor and game sounds. Click the card too many times and, like a Warcraft III critter, it bursts. The plain one is a dark card with rounded corners.
+- **Two looks** (menu → Display → Warcraft III look): the Warcraft one is drawn from [warcraftcn/ui](https://github.com/TheOrcDev/warcraftcn-ui) art, with loading-bar limits and the Cinzel font, plus, if you choose to download them, the orc gauntlet cursor and game sounds (see [Sounds and cursor](#sounds-and-cursor)). Click the card too many times and, like a Warcraft III critter, it bursts. The plain one is a dark card with rounded corners.
 - **Small things**: drag to move, drag the corner grip to resize the whole card (text included), drag its right edge to make it wider for long chat names (menu → Display → Reset size undoes both), scroll to change opacity, Esc or `–` hides it to the tray (its icon is a column filling with your 5-hour usage), middle-click the bars for compact mode, always on top, click-through, lock position, start with Windows.
 
-## Sounds
+## Sounds and cursor
 
-The Warcraft look plays game sounds on chat and widget events. All of Blizzard's audio is © Blizzard Entertainment, so **none of it is in this repo or in the setup**:
+The Warcraft look can play game sounds on chat and widget events and use the orc gauntlet cursor. Those are © Blizzard Entertainment, so **none of them is in this repo or in the setup, and the widget never fetches them by itself**:
 
-- **Orc lines** (Warcraft III peon and grunt): the widget downloads these once, on first start, from the [peon-ping](https://github.com/PeonPing/peon-ping) project's pack, and keeps only files matching the SHA-256 hashes pinned in `Program.cs`. That is the widget's only network access.
-- **WoW interface sounds** are optional: until you add them, an orc line plays in their place (and the plain clicks stay quiet). To add them, save each as a WAV with the name below in the `sounds` folder next to the exe. The links are to Wowhead.
+- **Orc lines and cursor (opt-in)**: on first start in the Warcraft look, a popup says what they are, that they're Blizzard's and not official Blizzard downloads, and where they come from: the [peon-ping](https://github.com/PeonPing/peon-ping) project's pack for the Warcraft III peon and grunt lines, and [warcraftcn/ui](https://github.com/TheOrcDev/warcraftcn-ui) for the cursor. Only if you say yes does it download them (about 1 MB), keeping each file only if it matches the SHA-256 hash pinned in `Program.cs`. You take responsibility for your use of them. You can do it later from menu → Alerts → Get Warcraft sounds & cursor. That download is the widget's only network access.
+- **WoW interface sounds** are yours to add: until you do, an orc line plays in their place if you downloaded those, and the plain clicks stay quiet. To add them, save each as a WAV with the name below in the `sounds` folder next to the exe. The links are to Wowhead.
 
 | File | Plays when | Sound |
 | --- | --- | --- |
@@ -74,9 +74,10 @@ Rename `setup/ClaudeUsageWidget.exe` to `ClaudeUsageWidget-Setup.exe`: run with 
 
 ## Credits
 
-- Frames, button and cursor: [warcraftcn/ui](https://github.com/TheOrcDev/warcraftcn-ui) (MIT, `art/warcraftcn-LICENSE.txt`)
+- Frames and button: [warcraftcn/ui](https://github.com/TheOrcDev/warcraftcn-ui) (MIT, `art/warcraftcn-LICENSE.txt`)
 - Font: [Cinzel](https://github.com/NDISCOVER/Cinzel) (SIL Open Font License, `art/Cinzel-OFL.txt`)
-- Orc lines: Warcraft III © Blizzard Entertainment, via [peon-ping](https://github.com/PeonPing/peon-ping); WoW sounds © Blizzard Entertainment
+- Opt-in downloads, not part of this project: the orc lines (Warcraft III © Blizzard Entertainment, via [peon-ping](https://github.com/PeonPing/peon-ping)) and the orc cursor (Warcraft III © Blizzard Entertainment, via [warcraftcn/ui](https://github.com/TheOrcDev/warcraftcn-ui)). WoW sounds © Blizzard Entertainment.
+- The confetti pop and the burst's splat were made for this project (generated with ffmpeg).
 
 ## License
 
