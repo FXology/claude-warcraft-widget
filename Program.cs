@@ -687,9 +687,11 @@ static class Chats
     }
 
     // An unnamed chat is named after its first prompt, which can be a whole pasted log (GDI+ can't draw ~40k chars).
+    // Emoji go too: GDI+ draws them as empty boxes.
     static string ShortName(string name)
     {
-        var line = name.Split('\n', 2)[0].Trim();
+        var line = name.Split('\n', 2)[0];
+        line = Regex.Replace(new string([.. line.Where(c => !char.IsSurrogate(c) && c is not ('️' or '‍'))]), " {2,}", " ").Trim();
         return line.Length > 120 ? line[..120] + "…" : line;
     }
 
@@ -721,7 +723,8 @@ static class Chats
         $"{(c.Name.Length > 0 ? c.Name : c.Id)}\n{Status(c.State).Text} · " +
         (c.Context is double ctx ? $"context {ctx:0}%{(ctx >= 80 ? " (nearly full: /compact or start a new chat)" : "")}" : "context: no data yet") +
         (c.Detail.Length > 0 && c.Detail != c.Name ? $"\n{c.Detail}" : "") +
-        $"\n{c.Cwd}\nClick: open · Middle-click: folder · Right-click: more";
+        (c.Cwd.Length > 0 ? $"\n{c.Cwd}" : "") +
+        "\nClick: open · Middle-click: folder · Right-click: more";
 
     static bool IsOver(Chat c) => c.State is "done" or "stopped";
 
@@ -739,6 +742,7 @@ static class Chats
     public static (string Text, Color Color) Status(string state) => state switch
     {
         "blocked" => ("needs input", Theme.Level(100)),
+        "failed" => ("failed", Theme.Level(100)), // as loud as needing you: something to look at
         "done" => ("done", Theme.Level(0)),
         "working" or "running" => ("working", Theme.Level(50)),
         _ => (state, Theme.Muted),
@@ -766,7 +770,7 @@ sealed class WidgetForm : Form
     readonly Dictionary<string, string> chatStates = []; // last seen state per chat, to voice changes
     string tipText = "";
     Bitmap? frameCache; // the frame images scaled to the card, redrawn only when its size or panel changes
-    (Size, bool, int, bool) frameKey;
+    (Size, bool, int, bool, bool) frameKey;
     volatile bool chatsDirty = true; // set from the watcher's thread
     bool chatsLoading;
     DateTime chatsLoadedAt;
@@ -828,8 +832,9 @@ sealed class WidgetForm : Form
     float BodyHeight => settings.Compact ? Top0 + 26 * Math.Max(1, Rows().Count) + 1 : Top0 + 42 + 44 * Math.Max(1, Rows().Count);
     // Limit i's loading bar, frame included, in screen pixels; the percentage sits to its right.
     RectangleF BarBox(int i) => settings.Compact
-        ? new((Pad + 30) * S, (Top0 + 26 * i + 5) * S, ClientSize.Width - (2 * Pad + 30 + 56) * S, 15 * S)
-        : new(Pad * S, (Top0 + 28 + 44 * i + 19) * S, ClientSize.Width - (2 * Pad + 56) * S, 16 * S);
+        ? new((Pad + 30) * S, (Top0 + 26 * i + 5) * S, ClientSize.Width - (2 * Pad + 30 + PercentRoom) * S, 15 * S)
+        : new(Pad * S, (Top0 + 28 + 44 * i + 19) * S, ClientSize.Width - (2 * Pad + PercentRoom) * S, 16 * S);
+    float PercentRoom => settings.ShowRemaining ? 100 : 56; // "100% left" needs nearly twice the room of "100%"
     RectangleF PanelBox => new((Edge - 3) * S, BodyHeight * S, ClientSize.Width - 2 * (Edge - 3) * S, (25 * chats.Count + 16) * S);
     RectangleF ChatSlot(int i) => new(PanelBox.X + 8 * S, (BodyHeight + 8 + 25 * i) * S, PanelBox.Width - 16 * S, 25 * S);
     void Say(Sound.Voice voice) { if (settings.Voices && Theme.Warcraft) Sound.Say(voice, settings.SoundVolume); }
@@ -1453,7 +1458,7 @@ sealed class WidgetForm : Form
         float s = S, pad = Pad * s, right = ClientSize.Width - pad;
 
         // The background (frames are images, slow to scale) is drawn once per card size and look into a cached bitmap.
-        var key = (ClientSize, settings.Compact, chats.Count, Theme.Warcraft);
+        var key = (ClientSize, settings.Compact, chats.Count, Theme.Warcraft, settings.ShowRemaining); // the bar frames move with "% left"
         if (frameCache == null || frameKey != key)
         {
             frameCache?.Dispose();
@@ -1923,6 +1928,9 @@ static class SelfTest
         Check(Chats.Visible(later, active, finished).Select(c => c.Id).SequenceEqual(["bb22", "aa11"]) && finished.Contains("aa11"), "lists a chat that just finished");
         finished.Remove("aa11");
         Check(Chats.Visible(later, active, finished).Select(c => c.Id).SequenceEqual(["bb22"]), "an opened done chat leaves the list");
+        var odd = Chats.Parse("""[{"id":"e1","kind":"background","name":"ship it 🚀️ now","state":"failed","cwd":""}]""")[0];
+        Check(odd.Name == "ship it now" && Chats.Status("failed").Color == Chats.Status("blocked").Color && !Chats.Tooltip(odd).Contains("\n\n"),
+            "emoji dropped from names, failed is loud, no blank popup line");
         Check(Chats.Status("blocked").Text == "needs input" && Chats.Status("whatever").Text == "whatever", "status labels");
         var t0 = DateTimeOffset.Now;
         var pace = new Limit(60, t0.AddHours(3)); // 2 h into a 5 h window at 30 %/h: full in 80 min
