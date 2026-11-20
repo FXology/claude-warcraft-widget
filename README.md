@@ -20,6 +20,12 @@ Unofficial fan project. Not affiliated with or endorsed by Anthropic or Blizzard
 
 Needs Windows 10 or 11 and Claude Code on a Pro or Max plan (only those plans report usage limits). Nothing else: the setup carries its own .NET runtime, and the status line runs inside the widget's exe, so no Node.js either. Running a newer setup over an installed copy updates it in place.
 
+**Portable, no install:** download `ClaudeUsageWidget-Portable.zip` instead, unzip it anywhere and run `ClaudeUsageWidget.exe` (keep the `art` and `sounds` folders beside it). It changes nothing on your PC, so point Claude Code's status line at it yourself in `~/.claude/settings.json`:
+
+```json
+"statusLine": { "type": "command", "command": "\"C:/path/to/ClaudeUsageWidget.exe\" --statusline" }
+```
+
 ## What it does
 
 - **Usage limits**: 5-hour and weekly, with reset times and a countdown. When your pace this window would hit the limit before it resets, the line turns orange: `full ~16:40 · resets 18:00`. Notifications at 80% and 95%, and when a limit resets (with confetti).
