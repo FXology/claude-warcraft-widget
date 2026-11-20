@@ -8,7 +8,7 @@ A small Windows desktop widget for [Claude Code](https://code.claude.com): your 
 
 | Warcraft III look | Plain look |
 | --- | --- |
-| ![Warcraft III look](docs/warcraft.png) | ![Plain look](docs/simple.png) |
+| ![Warcraft III look](docs/warcraft.gif) | ![Plain look](docs/simple.gif) |
 
 Unofficial fan project. Not affiliated with or endorsed by Anthropic or Blizzard Entertainment. Warcraft and Blizzard Entertainment are trademarks of Blizzard Entertainment, Inc.; Claude is a trademark of Anthropic, PBC. They're named here only to say what the widget works with and looks like.
 
@@ -30,7 +30,7 @@ Needs Windows 10 or 11 and Claude Code on a Pro or Max plan (only those plans re
 
 - **Usage limits**: 5-hour and weekly, with reset times and a countdown. When your pace this window would hit the limit before it resets, the line turns orange: `full ~16:40 · resets 18:00`. Notifications at 80% and 95%, and when a limit resets (with confetti).
 - **Chats panel**: your background Claude Code chats (`claude --bg`, agent view), marked **needs input**, **working** or **done**, each with a ring showing its context use. Hover for what it's doing now; click to open it in PowerShell; middle-click for its folder; right-click to stop or remove it. `+` starts a new background chat.
-- **Two looks** (menu → Display → Warcraft III look): the Warcraft one is drawn from [warcraftcn/ui](https://github.com/TheOrcDev/warcraftcn-ui) art, with loading-bar limits and the Cinzel font, plus, if you choose to download them, the orc gauntlet cursor and game sounds (see [Sounds and cursor](#sounds-and-cursor)). Click the card too many times and, like a Warcraft III critter, it bursts. The plain one is a dark card with rounded corners.
+- **Two looks** (menu → Display → Warcraft III look): the Warcraft one is drawn from [warcraftcn/ui](https://github.com/TheOrcDev/warcraftcn-ui) art, with loading-bar limits and the Cinzel font, plus, if you choose to download them, the orc gauntlet cursor and game sounds (see [Sounds and cursor](#sounds-and-cursor)). The plain one is a dark card with rounded corners.
 - **Small things**: drag to move, drag the corner grip to resize the whole card (text included), drag its right edge to make it wider for long chat names (menu → Display → Reset size undoes both), scroll to change opacity, Esc or `–` hides it to the tray (its icon is a column filling with your 5-hour usage), middle-click the bars for compact mode, always on top, click-through, lock position, start with Windows.
 
 ## Sounds and cursor
@@ -53,7 +53,7 @@ The Warcraft look can play game sounds on chat and widget events and use the orc
 | `CardShow.wav` / `CardHide.wav` | the card comes back / hides to the tray | [igCharacterInfoOpen](https://www.wowhead.com/sound=839) / [igCharacterInfoClose](https://www.wowhead.com/sound=840) |
 | `OptionTick.wav` | you tick an option | [igMainMenuOptionCheckBoxOn](https://www.wowhead.com/sound=856) |
 
-Turn all of it off under menu → Alerts → Game sounds. The burst's splat (`sounds/explode.wav`) and the confetti pop (`confetti.mp3`) are this project's own.
+Turn all of it off under menu → Alerts → Game sounds. `sounds/explode.wav` and the confetti pop (`confetti.mp3`) are this project's own.
 
 ## How it works
 
@@ -87,7 +87,7 @@ Rename `setup/ClaudeUsageWidget.exe` to `ClaudeUsageWidget-Setup.exe`: run with 
 - Frames and button: [warcraftcn/ui](https://github.com/TheOrcDev/warcraftcn-ui) (MIT, `art/warcraftcn-LICENSE.txt`)
 - Font: [Cinzel](https://github.com/NDISCOVER/Cinzel) (SIL Open Font License, `art/Cinzel-OFL.txt`)
 - Opt-in downloads, not part of this project: the orc lines (Warcraft III © Blizzard Entertainment, via [peon-ping](https://github.com/PeonPing/peon-ping)) and the orc cursor (Warcraft III © Blizzard Entertainment, via [warcraftcn/ui](https://github.com/TheOrcDev/warcraftcn-ui)). WoW sounds © Blizzard Entertainment.
-- Made for this project: the loading bar and the app icon (drawn in code), the confetti pop and the burst's splat (generated with ffmpeg).
+- Made for this project: the loading bar and the app icon (drawn in code), the confetti pop and `sounds/explode.wav` (generated with ffmpeg).
 
 ## License
 
