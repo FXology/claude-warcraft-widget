@@ -826,9 +826,26 @@ static class Chats
         _ => (state, Theme.Muted),
     };
 
-    // A new PowerShell window in the chat's folder, attached to the chat; it stays open after you detach.
-    public static void Open(Chat c) => Process.Start(new ProcessStartInfo("powershell.exe", $"-NoLogo -NoExit -Command claude attach {c.Id}")
-        { UseShellExecute = true, WorkingDirectory = Directory.Exists(c.Cwd) ? c.Cwd : "" });
+    // The chat's window brought forward if one is already attached to it (opened by the widget or by hand); otherwise
+    // a new PowerShell window in the chat's folder, attached to the chat, which stays open after you detach.
+    public static void Open(Chat c)
+    {
+        if (AttachedWindow(c.Id) is not 0 and var window) { Native.Focus(window); return; }
+        Process.Start(new ProcessStartInfo("powershell.exe", $"-NoLogo -NoExit -Command claude attach {c.Id}")
+            { UseShellExecute = true, WorkingDirectory = Directory.Exists(c.Cwd) ? c.Cwd : "" });
+    }
+
+    // The window of a running `claude attach <id>`, or 0. A window whose claude has exited doesn't count: it shows a prompt, not the chat.
+    // shortcut: a Windows Terminal window with several tabs comes forward on whichever tab is showing; the widget opens one window per chat.
+    static nint AttachedWindow(string id)
+    {
+        foreach (var p in Process.GetProcessesByName("claude"))
+            using (p)
+                if (Native.CommandLine(p.Id) is { } cmd && IsAttach(cmd, id) && Native.ConsoleWindowOf(p.Id) is not 0 and var window) return window;
+        return 0;
+    }
+
+    public static bool IsAttach(string commandLine, string id) => Regex.IsMatch(commandLine, $@"\sattach\s+""?{Regex.Escape(id)}""?(\s|$)");
 }
 
 sealed class WidgetForm : Form
@@ -1969,6 +1986,53 @@ static class Native
     [DllImport("userenv.dll")] public static extern bool DestroyEnvironmentBlock(nint environment);
     [DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(nint hwnd, int attribute, ref int value, int size);
     [DllImport("winmm.dll", CharSet = CharSet.Unicode)] public static extern int mciSendString(string command, StringBuilder? ret, int retLength, nint callback);
+    [DllImport("kernel32.dll")] static extern bool AttachConsole(int pid);
+    [DllImport("kernel32.dll")] static extern bool FreeConsole();
+    [DllImport("kernel32.dll")] static extern nint GetConsoleWindow();
+    [DllImport("kernel32.dll")] static extern nint OpenProcess(uint access, bool inherit, int pid);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(nint handle);
+    [DllImport("ntdll.dll")] static extern int NtQueryInformationProcess(nint process, int infoClass, nint buffer, int length, out int needed);
+    [DllImport("user32.dll")] static extern nint GetAncestor(nint window, int flags);
+    [DllImport("user32.dll")] static extern bool IsIconic(nint window);
+    [DllImport("user32.dll")] static extern bool ShowWindow(nint window, int command);
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(nint window);
+
+    // Another process's command line (ProcessCommandLineInformation: a UNICODE_STRING followed by its text), or null.
+    public static string? CommandLine(int pid)
+    {
+        nint process = OpenProcess(0x1000, false, pid); // PROCESS_QUERY_LIMITED_INFORMATION
+        if (process == 0) return null;
+        try
+        {
+            NtQueryInformationProcess(process, 60, 0, 0, out int needed);
+            if (needed <= 0) return null;
+            nint buffer = Marshal.AllocHGlobal(needed);
+            try
+            {
+                if (NtQueryInformationProcess(process, 60, buffer, needed, out _) != 0) return null;
+                return Marshal.PtrToStringUni(Marshal.ReadIntPtr(buffer, IntPtr.Size), (ushort)Marshal.ReadInt16(buffer) / 2);
+            }
+            finally { Marshal.FreeHGlobal(buffer); }
+        }
+        finally { CloseHandle(process); }
+    }
+
+    // The window a console process shows in: its console window, or in Windows Terminal the terminal window that owns its
+    // pseudo-console window. Borrows the process's console for a moment (the widget has none of its own). 0 if it can't.
+    public static nint ConsoleWindowOf(int pid)
+    {
+        if (!AttachConsole(pid)) return 0;
+        nint console = GetConsoleWindow();
+        FreeConsole();
+        return console == 0 ? 0 : GetAncestor(console, 3) is not 0 and var root ? root : console; // GA_ROOTOWNER
+    }
+
+    // Allowed because the widget was just clicked, so it's the foreground window handing over.
+    public static void Focus(nint window)
+    {
+        if (IsIconic(window)) ShowWindow(window, 9); // SW_RESTORE
+        SetForegroundWindow(window);
+    }
 }
 
 static class SelfTest
@@ -2046,6 +2110,10 @@ static class SelfTest
             "the Warcraft bar is WoW blue, then the warning colours from 80%");
         var bar = new RectangleF(10, 10, 200, 16);
         Check(bar.Contains(Art.BarWell(bar)) && Art.BarWell(bar).Width > 150, "the bar's well sits inside its box, between the caps");
+        Check(Chats.IsAttach("\"C:\\u\\.local\\bin\\claude.exe\" attach 35be1a30", "35be1a30") && Chats.IsAttach("claude attach 35be1a30 --x", "35be1a30")
+            && !Chats.IsAttach("claude attach 35be1a301", "35be1a30") && !Chats.IsAttach("claude --bg attach-it 35be1a30", "35be1a30"),
+            "finds the window attached to exactly this chat");
+        Check(Native.CommandLine(Environment.ProcessId)?.Contains("--selftest") == true, "reads a process's command line");
         Check(File.Exists(Path.Combine(AppContext.BaseDirectory, "sounds", "explode.wav")), "our own splat ships in sounds\\");
         var (su, sc, sid, sline) = StatusLine.Parse("""{"session_id":"abc-1","model":{"display_name":"Opus 5.5"},"context_window":{"used_percentage":41.5},"rate_limits":{"five_hour":{"used_percentage":15,"resets_at":1},"seven_day":{"used_percentage":35.4,"resets_at":2}}}""");
         Check(sline == "Opus 5.5 · ctx 42% · 5h 15% · 7d 35%" && su?["rate_limits"] != null && sc?["used_percentage"]?.GetValue<double>() == 41.5 && sid == "abc-1",
