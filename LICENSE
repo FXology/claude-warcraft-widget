@@ -20,6 +20,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-Third-party parts keep their own licenses: the art in art\ (frames, button,
-cursor) is from warcraftcn/ui under the MIT License (art\warcraftcn-LICENSE.txt),
-and the Cinzel font is under the SIL Open Font License (art\Cinzel-OFL.txt).
+Third-party parts keep their own licenses: the card and panel frames and the
+button in art\ are from warcraftcn/ui under the MIT License
+(art\warcraftcn-LICENSE.txt), and the Cinzel font is under the SIL Open Font
+License (art\Cinzel-OFL.txt).
+
+Not included, and not covered by this license: the Warcraft orc voice lines, the
+orc cursor and World of Warcraft sounds are (c) Blizzard Entertainment. The
+widget downloads the voice lines and cursor only if its user chooses to, from
+third-party projects, and the user is responsible for that use. Warcraft and
+World of Warcraft are trademarks of Blizzard Entertainment, Inc.; Claude is a
+trademark of Anthropic, PBC. This is an unofficial project, not affiliated with
+or endorsed by either.

@@ -38,7 +38,7 @@ Needs Windows 10 or 11 and Claude Code on a Pro or Max plan (only those plans re
 The Warcraft look can play game sounds on chat and widget events and use the orc gauntlet cursor. Those are © Blizzard Entertainment, so **none of them is in this repo or in the setup, and the widget never fetches them by itself**:
 
 - **Orc lines and cursor (opt-in)**: on first start in the Warcraft look, a popup says what they are, that they're Blizzard's and not official Blizzard downloads, and where they come from: the [peon-ping](https://github.com/PeonPing/peon-ping) project's pack for the Warcraft III peon and grunt lines, and [warcraftcn/ui](https://github.com/TheOrcDev/warcraftcn-ui) for the cursor. Only if you say yes does it download them (about 1 MB), keeping each file only if it matches the SHA-256 hash pinned in `Program.cs`. You take responsibility for your use of them. You can do it later from menu → Alerts → Get Warcraft sounds & cursor. That download is the widget's only network access.
-- **WoW interface sounds** are yours to add: until you do, an orc line plays in their place if you downloaded those, and the plain clicks stay quiet. To add them, save each as a WAV with the name below in the `sounds` folder next to the exe. The links are to Wowhead.
+- **WoW interface sounds** are yours to add: until you do, an orc line plays in their place if you downloaded those, and the plain clicks stay quiet. To add them, save each as a WAV with the name below in the `sounds` folder next to the exe. They're Blizzard's, so add them only for your own use and never redistribute them. The links are to Wowhead, where you can listen to each.
 
 | File | Plays when | Sound |
 | --- | --- | --- |
@@ -87,7 +87,7 @@ Rename `setup/ClaudeUsageWidget.exe` to `ClaudeUsageWidget-Setup.exe`: run with 
 - Frames and button: [warcraftcn/ui](https://github.com/TheOrcDev/warcraftcn-ui) (MIT, `art/warcraftcn-LICENSE.txt`)
 - Font: [Cinzel](https://github.com/NDISCOVER/Cinzel) (SIL Open Font License, `art/Cinzel-OFL.txt`)
 - Opt-in downloads, not part of this project: the orc lines (Warcraft III © Blizzard Entertainment, via [peon-ping](https://github.com/PeonPing/peon-ping)) and the orc cursor (Warcraft III © Blizzard Entertainment, via [warcraftcn/ui](https://github.com/TheOrcDev/warcraftcn-ui)). WoW sounds © Blizzard Entertainment.
-- The confetti pop and the burst's splat were made for this project (generated with ffmpeg).
+- Made for this project: the loading bar and the app icon (drawn in code), the confetti pop and the burst's splat (generated with ffmpeg).
 
 ## License
 
